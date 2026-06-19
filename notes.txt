@@ -1,0 +1,11 @@
+5 folds 
+
+
+20% daten weg valid
+
+alles mit 5-fold, sigma 
+
+
+Varianten:
+regression: predicten: wieviel delay in minuten 
+classification: delayed yes / no

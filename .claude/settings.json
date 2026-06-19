@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c \"import sys,json,os,subprocess; d=json.load(sys.stdin); f=(d.get('tool_input') or {}).get('file_path',''); f and os.path.splitext(f)[1] in ('.py','.ipynb') and subprocess.run([sys.executable,'-m','ruff','format',f])\" 2>/dev/null || true",
+            "timeout": 15,
+            "statusMessage": "ruff format..."
+          }
+        ]
+      }
+    ]
+  }
+}
