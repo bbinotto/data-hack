@@ -7,3 +7,4 @@ jupyter>=1.0
 notebook>=7.0
 ipykernel>=6.0
 ruff>=0.4
+xgboost>=3.3

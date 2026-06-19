@@ -35,6 +35,7 @@ from sklearn.preprocessing import (
     OrdinalEncoder,
     StandardScaler,
 )
+from xgboost import XGBClassifier
 
 DATA_DIR = Path(__file__).resolve().parent.parent
 
@@ -186,6 +187,23 @@ def main():
             max_depth=max_depth,
             max_iter=max_iter,
             random_state=42,
+        )
+        candidates.append((name, model, "hgb"))
+
+    for learning_rate, max_depth, n_estimators in [
+        (0.1, 6, 200),
+        (0.05, 8, 400),
+        (0.1, 4, 300),
+    ]:
+        name = f"XGBoost(lr={learning_rate}, max_depth={max_depth}, n_estimators={n_estimators})"
+        model = XGBClassifier(
+            learning_rate=learning_rate,
+            max_depth=max_depth,
+            n_estimators=n_estimators,
+            tree_method="hist",
+            n_jobs=-1,
+            random_state=42,
+            eval_metric="logloss",
         )
         candidates.append((name, model, "hgb"))
 
