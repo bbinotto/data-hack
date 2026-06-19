@@ -93,25 +93,21 @@ def apply_target_encoding(X, mappings, global_mean):
     return out
 
 
-def evaluate(name, model, X_train, y_train, X_val, y_val):
+def evaluate(name, model, X_train, y_train, X_test, y_test):
     t0 = time.time()
     model.fit(X_train, y_train)
-    pred = model.predict(X_val)
+    pred = model.predict(X_test)
     proba = (
-        model.predict_proba(X_val)[:, 1] if hasattr(model, "predict_proba") else None
+        model.predict_proba(X_test)[:, 1] if hasattr(model, "predict_proba") else None
     )
     metrics = {
         "name": name,
-        "accuracy": accuracy_score(y_val, pred),
-        "balanced_accuracy": balanced_accuracy_score(y_val, pred),
-        "f1": f1_score(y_val, pred),
-        "roc_auc": roc_auc_score(y_val, proba) if proba is not None else float("nan"),
+        "accuracy": accuracy_score(y_test, pred),
+        "balanced_accuracy": balanced_accuracy_score(y_test, pred),
+        "f1": f1_score(y_test, pred),
+        "roc_auc": roc_auc_score(y_test, proba) if proba is not None else float("nan"),
         "seconds": time.time() - t0,
     }
-    print(
-        f"{name:55s} acc={metrics['accuracy']:.4f}  bal_acc={metrics['balanced_accuracy']:.4f}  "
-        f"f1={metrics['f1']:.4f}  auc={metrics['roc_auc']:.4f}  ({metrics['seconds']:.1f}s)"
-    )
     return metrics
 
 
@@ -119,14 +115,14 @@ def main():
     # Sample for speed while comparing candidates; the winner gets refit on
     # the full train+val data at the end.
     X_train, y_train = load("flights_train.csv", frac=0.3)
-    X_val, y_val = load("flights_val.csv")
+    X_test, y_test = load("flights_test.csv")
 
-    baseline = max(y_val.mean(), 1 - y_val.mean())
+    baseline = max(y_test.mean(), 1 - y_test.mean())
     print(f"Majority-class baseline accuracy: {baseline:.4f}\n")
 
     mappings, global_mean = fit_target_encoding(X_train, y_train, HIGH_CARD_FEATURES)
     X_train_hgb = apply_target_encoding(X_train, mappings, global_mean)
-    X_val_hgb = apply_target_encoding(X_val, mappings, global_mean)
+    X_test_hgb = apply_target_encoding(X_test, mappings, global_mean)
 
     onehot = ColumnTransformer(
         [
@@ -145,7 +141,7 @@ def main():
         ]
     )
 
-    # (name, model, feature_kind) -- feature_kind picks which (X_train, X_val) pair to use.
+    # (name, model, feature_kind) -- feature_kind picks which (X_train, X_test) pair to use.
     candidates = []
 
     for scaler_name, scaler in [
@@ -193,42 +189,42 @@ def main():
         )
         candidates.append((name, model, "hgb"))
 
-    feature_sets = {"raw": (X_train, X_val), "hgb": (X_train_hgb, X_val_hgb)}
+    feature_sets = {"raw": (X_train, X_test), "hgb": (X_train_hgb, X_test_hgb)}
 
     results = []
     for name, model, kind in candidates:
         X_tr, X_va = feature_sets[kind]
-        metrics = evaluate(name, model, X_tr, y_train, X_va, y_val)
+        metrics = evaluate(name, model, X_tr, y_train, X_va, y_test)
         results.append((metrics, model, kind))
 
     results.sort(key=lambda r: r[0]["accuracy"], reverse=True)
-    print("\nTop 5 by accuracy:")
-    for metrics, _, _ in results[:5]:
-        print(
-            f"  {metrics['name']:55s} acc={metrics['accuracy']:.4f}  f1={metrics['f1']:.4f}  auc={metrics['roc_auc']:.4f}"
-        )
+
+    results_df = pd.DataFrame([metrics for metrics, _, _ in results]).set_index("name")
+    print("\nModel comparison (sorted by accuracy):")
+    print(results_df.round(4).to_string())
 
     best_metrics, best_model, best_kind = results[0]
     print(f"\nBest by accuracy: {best_metrics['name']} (feature kind: {best_kind})")
 
     # Refit the winner on train+val, evaluate once on the held-out test set.
-    X_full_raw = pd.concat([X_train, X_val], ignore_index=True)
-    y_full = pd.concat([y_train, y_val], ignore_index=True)
-    X_test_raw, y_test = load("flights_test.csv")
+    X_full_raw = pd.concat([X_train, X_test], ignore_index=True)
+    y_full = pd.concat([y_train, y_test], ignore_index=True)
+
+    X_val_raw, y_val = load("flights_val.csv")
 
     if best_kind == "hgb":
         full_mappings, full_global_mean = fit_target_encoding(
             X_full_raw, y_full, HIGH_CARD_FEATURES
         )
         X_full = apply_target_encoding(X_full_raw, full_mappings, full_global_mean)
-        X_test = apply_target_encoding(X_test_raw, full_mappings, full_global_mean)
+        X_val = apply_target_encoding(X_val_raw, full_mappings, full_global_mean)
     else:
-        X_full, X_test = X_full_raw, X_test_raw
+        X_full, X_val = X_full_raw, X_val_raw
 
     best_model.fit(X_full, y_full)
-    y_pred = best_model.predict(X_test)
-    print(f"\nFinal test accuracy: {accuracy_score(y_test, y_pred):.4f}")
-    print(classification_report(y_test, y_pred, target_names=["On-time", "Delayed"]))
+    y_pred = best_model.predict(X_val)
+    print(f"\nFinal test accuracy: {accuracy_score(y_val, y_pred):.4f}")
+    print(classification_report(y_val, y_pred, target_names=["On-time", "Delayed"]))
 
 
 if __name__ == "__main__":
